@@ -6,6 +6,32 @@ output: html_document
 ---
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE, Load_packages}
-
+library("readxl")
+library(httr)
 ```
 
+
+```{r}
+student_evaluation_gh_file <- "https://github.com/hovig/Team5-Data624-Project2/raw/master/StudentEvaluation.xlsx"
+student_data_gh_file <- "https://github.com/hovig/Team5-Data624-Project2/raw/master/StudentData.xlsx"
+
+se_temp_file <- tempfile(fileext = ".xlsx")
+sd_temp_file <- tempfile(fileext = ".xlsx")
+
+se_data <- GET(student_evaluation_gh_file, authenticate(Sys.getenv("GITHUB_PAT"), ""), write_disk(path = se_temp_file))
+df_data <- GET(student_data_gh_file, authenticate(Sys.getenv("GITHUB_PAT"), ""), write_disk(path = sd_temp_file))
+se_data <- readxl::read_excel(se_temp_file)
+sd_data <- readxl::read_excel(sd_temp_file)
+```
+
+```{r}
+se_data
+```
+
+```{r}
+sd_data
+```
+
+```{r}
+
+```
