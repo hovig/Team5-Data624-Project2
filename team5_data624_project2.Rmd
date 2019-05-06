@@ -8,6 +8,16 @@ output: html_document
 ```{r echo=FALSE, message=FALSE, warning=FALSE, Load_packages}
 library("readxl")
 library(httr)
+library(caret)
+library(tidyverse)
+library(kableExtra)
+library(caretEnsemble)
+library(mice)
+library(kableExtra)
+library(parallel)
+library(doParallel)
+library(ggplot2)
+library(Hmisc)
 ```
 
 
@@ -20,32 +30,44 @@ sd_temp_file <- tempfile(fileext = ".xlsx")
 
 se_data <- GET(student_evaluation_gh_file, authenticate(Sys.getenv("GITHUB_PAT"), ""), write_disk(path = se_temp_file))
 df_data <- GET(student_data_gh_file, authenticate(Sys.getenv("GITHUB_PAT"), ""), write_disk(path = sd_temp_file))
+
 se_data <- readxl::read_excel(se_temp_file)
 sd_data <- readxl::read_excel(sd_temp_file)
+
+```
+```{r}
+hist.data.frame(se_data)
+```
+
+
+```{r}
+hist.data.frame(sd_data)
 ```
 
 
 ##Process Data
 
 ```{r}
-library(caret)
-library(tidyverse)
-
 show_results <- function(model){ 
   rslts <- model$results %>%
     arrange(RMSE)
   head(rslts, 10) %>% kable () %>% kable_styling(bootstrap_options = "striped", full_width = F)
 }
 bev_raw <- read_csv('https://raw.githubusercontent.com/hovig/Team5-Data624-Project2/master/StudentData.csv') %>%
-  drop_na(PH)
+drop_na(PH)
+```
+
+```{r}
+hist.data.frame(bev_raw)
+```
 
 
+```{r}
 bev <- select(bev_raw, -PH)
 cols <- str_replace(colnames(bev), '\\s', '')
 colnames(bev) <- cols
 bev <- mutate(bev, BrandCode = ifelse(is.na(BrandCode), 'Unknown', BrandCode))
 y <- bev_raw$PH
-
 
 zero_vars <- nearZeroVar(bev)
 bev_new <- bev[, -zero_vars]
@@ -56,6 +78,8 @@ bev_imputed <- complete(pred)
 form <- dummyVars(~ ., data = bev_imputed)
 bev_imputed <- predict(form, bev_imputed) %>% data.frame() %>% as.matrix()
 str(bev_imputed)
+
+write.csv(bev_imputed, file = "predictions.csv")
 ```
 
 ##Build Models
@@ -63,9 +87,6 @@ str(bev_imputed)
 These models only went through basic tuning.  We can tune invididually and add to the model list
 
 ```{r}
-library(caretEnsemble)
-
-
 xgb_grid <- expand.grid(eta = c(.025, .05), nrounds = c(750,1000), max_depth = c(3,5,7,9), gamma = c(0),
                           colsample_bytree = c(.6),
                           min_child_weight = c(.6,1),
@@ -98,7 +119,7 @@ my_control <- trainControl(method = 'cv',
 
 ##Test Stack
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 mod_list <- caretList(
   x = bev_imputed,
   y = y,
@@ -115,7 +136,10 @@ show_results(mod_list$mars)
 
 resamples <- resamples(mod_list)
 modelCor(resamples)
+```
 
+
+```{r}
 ensemble1 <- caretStack(
   mod_list,
   method="glm",
@@ -127,7 +151,9 @@ ensemble1 <- caretStack(
   )
 )
 ensemble1
+```
 
+```{r}
 ensemble2 <- caretEnsemble(mod_list, 
                         metric = 'RMSE', 
                         trControl=trainControl(
@@ -135,7 +161,7 @@ ensemble2 <- caretEnsemble(mod_list,
                           number=5,
                           savePredictions="final"
                         ))
-
+ensemble2
 stopCluster(cl)
 ```
 
