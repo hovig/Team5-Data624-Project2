@@ -18,6 +18,8 @@ library(parallel)
 library(doParallel)
 library(ggplot2)
 library(Hmisc)
+library(psych)
+library(reshape2)
 ```
 
 
@@ -35,6 +37,7 @@ se_data <- readxl::read_excel(se_temp_file)
 sd_data <- readxl::read_excel(sd_temp_file)
 
 ```
+
 ```{r}
 hist.data.frame(se_data)
 ```
@@ -45,7 +48,7 @@ hist.data.frame(sd_data)
 ```
 
 
-##Process Data
+####Process Data
 
 ```{r}
 show_results <- function(model){ 
@@ -58,8 +61,59 @@ drop_na(PH)
 ```
 
 ```{r}
+dim(bev_raw)
+str(bev_raw)
 hist.data.frame(bev_raw)
+table(bev_raw$`Brand Code`)
+summary(bev_raw)
+describe(bev_raw %>% select(-`Brand Code`))
 ```
+
+
+#### Zero variance
+
+```{r}
+df1 <- bev_raw %>% select(-`Brand Code`) %>% mutate_each(funs(as.numeric(.)))%>%complete.cases()%>%
+       as.data.frame()
+
+
+names(df1)[nearZeroVar(df1)]
+nzv <- nearZeroVar(bev_raw,saveMetrics= TRUE)
+nzv[nzv$nzv,]
+```
+
+
+#### Box plot
+
+```{r}
+df.m <- melt(bev_raw %>% select(-MFR, -`Filler Speed`, -`Carb Flow`,-`Bowl Setpoint`,`Carb Pressure1`,
+            `Hyd Pressure4`, `Air Pressurer`, `Carb Temp`, `Filler Level`, `Mnf Flow`), id.var = "Brand Code")
+p <-ggplot(data = df.m, aes(x=variable, y=value)) + 
+  geom_boxplot(outlier.colour="red", outlier.shape=8, outlier.size=4,aes(fill=variable)) +     
+  scale_y_continuous(name = "Predictors for PH", breaks = seq(0, 2, 0.5))  + 
+  coord_flip()
+p
+```
+
+### Normality 
+
+```{r}
+bev_raw%>%
+ select(-`Brand Code`) %>%   
+  select(2:20) %>%         
+  gather() %>%                            
+  ggplot(aes(value)) +                     
+    facet_wrap(~ key, scales = "free") +  
+    geom_density()  
+bev_raw%>%
+ select(-`Brand Code`) %>%   
+  select(`Carb Flow`, Density, MFR, Balling, `Pressure Vacuum`, PH, `Oxygen Filler`, `Bowl Setpoint`, `Pressure Setpoint`, `Air Pressurer`, `Alch Rel`,`Carb Rel`,`Balling Lvl`)   %>%               
+  gather() %>%                             
+  ggplot(aes(value)) +                     
+    facet_wrap(~ key, scales = "free") +  
+    geom_density() 
+```
+
 
 
 ```{r}
@@ -82,7 +136,7 @@ str(bev_imputed)
 write.csv(bev_imputed, file = "predictions.csv")
 ```
 
-##Build Models
+####Build Models
 
 These models only went through basic tuning.  We can tune invididually and add to the model list
 
@@ -117,7 +171,7 @@ my_control <- trainControl(method = 'cv',
                            allowParallel = TRUE) 
 ```
 
-##Test Stack
+####Test Stack
 
 ```{r message=FALSE, warning=FALSE}
 mod_list <- caretList(
