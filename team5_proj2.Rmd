@@ -1,0 +1,135 @@
+---
+title: "Project 2"
+author: "Nitin Kumar,Hovig Ohannessian,Gurpreet Singh, Peter Goodridge"
+date: "April 26, 2019"
+output: html_document
+---
+
+
+#### Libraries
+```{r}
+suppressWarnings(suppressMessages(library(data.table)))
+suppressWarnings(suppressMessages(library(dplyr)))
+suppressWarnings(suppressMessages(library(openxlsx)))
+suppressWarnings(suppressMessages(library(psych)))
+suppressWarnings(suppressMessages(library(knitr)))
+suppressWarnings(suppressMessages(library(DataExplorer)))
+suppressWarnings(suppressMessages(library(VIM)))
+suppressWarnings(suppressMessages(library(corrplot)))
+suppressWarnings(suppressMessages(library(ggplot2)))
+suppressWarnings(suppressMessages(library(caret)))
+suppressWarnings(suppressMessages(library(reshape2)))
+suppressWarnings(suppressMessages(library(PerformanceAnalytics)))
+suppressWarnings(suppressMessages(library(ggplot2)))
+suppressWarnings(suppressMessages(library(tidyr)))
+suppressWarnings(suppressMessages(library(DMwR)))
+```
+
+
+
+
+#### Data 
+```{r}
+ df <- fread("C:/Users/Gurpreet/Documents/Data624/StudentData.csv", stringsAsFactors=F)
+#df1 <- read.xlsx("https://github.com/hovig/Team5-Data624-Project2/StudentData.xlsx")
+
+dim(df)
+
+
+str(df)
+
+table(df$`Brand Code`)
+
+
+summary(df )
+(psych::describe(df %>% select(-`Brand Code`)))
+
+
+
+### missing
+miss_plot <- plot_missing(df)
+
+df_miss <- df%>% mutate(nul=rowSums(is.na(df)))%>%
+                       summarize(miss=sum(nul)) %>%filter(miss!=0)
+
+aggr_plot <- aggr(df, col=c('navyblue','red'), numbers=TRUE, sortVars=TRUE, labels=names(data), cex.axis=.7, gap=3, ylab=c("Histogram of missing data","Pattern"))
+
+
+
+#### correlation
+ df1 <- df %>% select(-`Brand Code`) %>% mutate_each(funs(as.numeric(.)))%>%complete.cases()%>%
+       as.data.frame()
+# x <- cor(df1,use="pairwise.complete.obs", method = "pearson")
+
+
+
+
+
+
+
+
+### zero variance
+
+names(df1)[nearZeroVar(df1)]
+nzv <- nearZeroVar(df,saveMetrics= TRUE)
+nzv[nzv$nzv,]
+
+####box plot
+df.m <- melt(df %>% select(-MFR, -`Filler Speed`, -`Carb Flow`,-`Bowl Setpoint`,`Carb Pressure1`,
+            `Hyd Pressure4`, `Air Pressurer`, `Carb Temp`, `Filler Level`, `Mnf Flow`),
+            id.var = "Brand Code")
+p <-ggplot(data = df.m, aes(x=variable, y=value)) + 
+  geom_boxplot(outlier.colour="red", outlier.shape=8,
+                outlier.size=4,aes(fill=variable)) +     scale_y_continuous(name = "Predictors for PH",
+                           breaks = seq(0, 2, 0.5))  + coord_flip()
+
+p
+
+
+df.m3 <- melt(df %>% select(MFR, `Filler Speed`, `Carb Flow`, `Brand Code`), id.var = "Brand Code")
+p3 <-ggplot(data = df.m3, aes(x=variable, y=value)) + 
+  geom_boxplot(outlier.colour="red", outlier.shape=8,
+                outlier.size=4,aes(fill=variable)) +     scale_y_continuous(name = "Predictors for PH",
+                           breaks = seq(0, 2, 0.5), limits= c(0,6000))  + coord_flip()
+
+p3
+
+#### Normality 
+
+
+
+
+df%>%
+ select(-`Brand Code`) %>%   select(2:20)   %>%         
+  gather() %>%                            
+  ggplot(aes(value)) +                     
+    facet_wrap(~ key, scales = "free") +  
+    geom_density()  
+
+
+
+df%>%
+ select(-`Brand Code`) %>%   select(`Carb Flow`,Density,MFR,Balling,`Pressure Vacuum`, PH,                                      `Oxygen Filler`, `Bowl Setpoint`, `Pressure Setpoint`, `Air Pressurer`,   
+`Alch Rel`,`Carb Rel`,`Balling Lvl`)   %>%               
+  gather() %>%                             
+  ggplot(aes(value)) +                     
+    facet_wrap(~ key, scales = "free") +  
+    geom_density() 
+
+```
+
+
+
+Data Preparation
+
+
+```{r}
+df <- knnImputation(df[,-1])
+miss_plot <- plot_missing(df)
+```
+
+
+
+
+
+
