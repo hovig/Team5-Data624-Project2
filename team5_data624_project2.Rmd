@@ -5,6 +5,10 @@ date: "4/20/2019"
 output: html_document
 ---
 
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = F, warning = F)
+```
+
 ```{r echo=FALSE, message=FALSE, warning=FALSE, Load_packages}
 library("readxl")
 library(httr)
@@ -14,12 +18,23 @@ library(kableExtra)
 library(caretEnsemble)
 library(mice)
 library(kableExtra)
-library(parallel)
+#library(parallel)
 library(doParallel)
 library(ggplot2)
 library(Hmisc)
 library(psych)
 library(reshape2)
+library(gridExtra)
+suppressWarnings(suppressMessages(library(data.table)))
+suppressWarnings(suppressMessages(library(openxlsx)))
+suppressWarnings(suppressMessages(library(psych)))
+suppressWarnings(suppressMessages(library(knitr)))
+suppressWarnings(suppressMessages(library(DataExplorer)))
+suppressWarnings(suppressMessages(library(VIM)))
+suppressWarnings(suppressMessages(library(corrplot)))
+suppressWarnings(suppressMessages(library(caret)))
+suppressWarnings(suppressMessages(library(PerformanceAnalytics)))
+#suppressWarnings(suppressMessages(library(DMwR)))
 ```
 
 
@@ -51,11 +66,6 @@ hist.data.frame(sd_data)
 ####Process Data
 
 ```{r}
-show_results <- function(model){ 
-  rslts <- model$results %>%
-    arrange(RMSE)
-  head(rslts, 10) %>% kable () %>% kable_styling(bootstrap_options = "striped", full_width = F)
-}
 bev_raw <- read_csv('https://raw.githubusercontent.com/hovig/Team5-Data624-Project2/master/StudentData.csv') %>%
 drop_na(PH)
 ```
@@ -114,9 +124,16 @@ bev_raw%>%
     geom_density() 
 ```
 
+###Prep Data
 
+We perform 3 data preperatoin steps
+- Remove the near-zero variance variables we previously mentioned
+- Impute missing values with a Random Forest Regression with the MICE package
+- Create dummy variables for the categorical variable, brand
 
-```{r}
+Random Forest was chosen as the regression method in imputation because it requires very little tuning, allowing and there is no interface to tune the imputation model in MICE.
+
+```{r results='hide'}
 bev <- select(bev_raw, -PH)
 cols <- str_replace(colnames(bev), '\\s', '')
 colnames(bev) <- cols
@@ -126,67 +143,168 @@ y <- bev_raw$PH
 zero_vars <- nearZeroVar(bev)
 bev_new <- bev[, -zero_vars]
 
-pred <- mice(data = bev_new, m = 5, method = 'rf', maxit = 3)
+pred <- mice(data = bev_new, m = 2, method = 'rf', maxit = 3)
 bev_imputed <- complete(pred)
 
 form <- dummyVars(~ ., data = bev_imputed)
 bev_imputed <- predict(form, bev_imputed) %>% data.frame() %>% as.matrix()
-str(bev_imputed)
-
-write.csv(bev_imputed, file = "predictions.csv")
 ```
 
-####Build Models
-
-These models only went through basic tuning.  We can tune invididually and add to the model list
+####Test Train Split
 
 ```{r}
+samples <- createDataPartition(y, p = .75, list = F)
+x_train <- bev_imputed[samples, ]
+x_test<- bev_imputed[-samples, ]
+
+y_train <- y[samples]
+y_test <- y[-samples]
+```
+
+###Build Models
+
+For state-of-the-art prediction quality, we will use a model stack.  This will consist of tuning models separately and then combining the candidate models into a metamodel that will formulate predictions with a linear combination of our tuned models.  
+
+From the perspective of understanding the manufacturing process, the model stack will also provide benefits.  The stack is like a panel of experts, each looking at the data through slightly different lenses to form their diagnoses.  By looking at the predictors each model uses, we can gather assemble a complete picture of the factors that affect our manufacturing process.  
+
+
+```{r}
+#svm_grid <- expand.grid(.C = c(.5,1,2,4,8,16,32,64,128), .sigma = c(.005,.01,.5, .1))
 xgb_grid <- expand.grid(eta = c(.025, .05), nrounds = c(750,1000), max_depth = c(3,5,7,9), gamma = c(0),
                           colsample_bytree = c(.6),
                           min_child_weight = c(.6,1),
                           subsample = c(.6))
 cub_grid <- expand.grid(.committees = c(1,3,5), .neighbors = c(1,3,5,7,9))
-svm_grid <- expand.grid(.C = c(.5,1,2,4,8,16,32,64,128), .sigma = c(.005,.01,.5, .1))
+#svm_grid <- expand.grid(.C = c(.5,1,2,4,8,16,32,64,128), .sigma = c(.005,.01,.5, .1))
 mars_grid <- expand.grid(.degree = c(1,2), .nprune = seq(16,36,4))
-dart_grid <- expand.grid(eta = c(.025), nrounds = c(1000), gamma = c(.1), skip_drop = c(.2,.6), rate_drop = c(.2,.6), max_depth = c(5),
-                          colsample_bytree = c(.6),
-                          min_child_weight = c(.6),
-                          subsample = c(.6))
+dart_grid <- expand.grid(eta = c(.025), nrounds = c(1000), gamma = c(.1), skip_drop = c(.2,.4,.6), rate_drop = c(.2,.4,.6), max_depth = c(5,6),
+colsample_bytree = c(.6),
+min_child_weight = c(.6),
+subsample = c(.6))
 
 tuning_list <-list(
   xgbt = caretModelSpec(method="xgbTree", tuneGrid = xgb_grid),
   xgbd = caretModelSpec(method="xgbDART", tuneGrid = dart_grid),
   cub = caretModelSpec(method="cubist", tuneGrid = cub_grid),
-  svm = caretModelSpec(method="svmRadial", tuneGrid = svm_grid),
+#  svm = caretModelSpec(method="rf", tuneGrid = svm_grid),
+  rf = caretModelSpec(method="rf", tuneLength = 8),
   mars = caretModelSpec(method="bagEarth", tuneGrid = mars_grid)
 )
 
 cl <- makeCluster(detectCores())
 registerDoParallel(cl)
 set.seed(42)
+
 my_control <- trainControl(method = 'cv',
                            number = 5,
                            savePredictions = 'final',
-                           index = createFolds(y, 5),
+                           index = createFolds(y_train, 5),
                            allowParallel = TRUE) 
-```
 
-####Test Stack
-
-```{r message=FALSE, warning=FALSE}
 mod_list <- caretList(
-  x = bev_imputed,
-  y = y,
+  x = x_train,
+  y = y_train,
   preProcess = c('center', 'scale'),
   trControl = my_control,
   tuneList = tuning_list
 )
+```
 
-show_results(mod_list$xgbt)
-show_results(mod_list$xgbd)
-show_results(mod_list$cub)
-show_results(mod_list$svm)
+
+####MARS
+
+```{r echo = F}
+#helper function
+show_results <- function(model){ 
+  rslts <- model$results %>%
+    arrange(RMSE)
+  head(rslts, 10) %>% kable () %>% kable_styling(bootstrap_options = "striped", full_width = F)
+}
+```
+
+```{r}
+
 show_results(mod_list$mars)
+```
+
+
+```{r}
+predict(mod_list$mars, x_test) %>%
+  postResample(y_test)
+```
+
+####RandomForest
+
+```{r}
+show_results(mod_list$rf)
+
+```
+
+
+```{r}
+predict(mod_list$rf, x_test) %>%
+  postResample(y_test)
+```
+
+####Cubist
+
+```{r}
+show_results(mod_list$cub)
+
+```
+
+
+```{r}
+predict(mod_list$cub, x_test) %>%
+  postResample(y_test)
+```
+
+####XGB Trees
+
+```{r}
+  
+show_results(mod_list$xgbt)
+```
+
+
+```{r}
+predict(mod_list$xgbt, x_test) %>%
+  postResample(y_test)
+```
+
+####XGB Dart
+
+```{r}
+
+  
+show_results(mod_list$xgbd)
+
+varImp(mod_list$xgbd)
+
+```
+
+```{r}
+predict(mod_list$xgbd, x_test) %>%
+  postResample(y_test)
+```
+
+####Variable Importances
+
+```{r}
+p1 <- varImp(mod_list$cub) %>%
+  plot(top = 10, main = 'Cubist')
+p2 <- varImp(mod_list$xgbt) %>%
+  plot(top = 10, main = 'XGBTrees')
+p3 <- varImp(mod_list$xgbd) %>%
+  plot(top = 10, main = 'XGBDart')
+p4 <- varImp(mod_list$mars) %>%
+  plot(top = 10, main = 'MARS')
+grid.arrange(p1,p2,p3,p4, nrow = 2, ncol = 2)
+```
+
+####Test Stack
+
+```{r}
 
 resamples <- resamples(mod_list)
 modelCor(resamples)
@@ -196,7 +314,7 @@ modelCor(resamples)
 ```{r}
 ensemble1 <- caretStack(
   mod_list,
-  method="glm",
+  method="glmnet",
   metric="RMSE",
   trControl=trainControl(
     method="cv",
@@ -206,6 +324,8 @@ ensemble1 <- caretStack(
 )
 ensemble1
 ```
+
+
 
 ```{r}
 ensemble2 <- caretEnsemble(mod_list, 
