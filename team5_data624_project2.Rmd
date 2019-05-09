@@ -365,10 +365,6 @@ ensemble1 <- caretStack(
 ensemble1
 ```
 
-```{r}
-predict(ensemble1, x_test) %>%
-  postResample(y_test)
-```
 
 ```{r}
 ensemble2 <- caretEnsemble(mod_list, 
@@ -381,10 +377,6 @@ ensemble2 <- caretEnsemble(mod_list,
 ensemble2
 ```
 
-```{r}
-predict(ensemble2, x_test) %>%
-  postResample(y_test)
-```
 
 ####Predict on Eval Set
 
