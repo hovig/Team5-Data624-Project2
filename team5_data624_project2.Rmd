@@ -159,6 +159,7 @@ bev_imputed <- complete(pred)
 
 form <- dummyVars(~ ., data = bev_imputed)
 bev_imputed <- predict(form, bev_imputed) %>% data.frame() %>% as.matrix()
+write.csv(bev_imputed, file = "predictions.csv")
 ```
 
 ####Test Train Split
