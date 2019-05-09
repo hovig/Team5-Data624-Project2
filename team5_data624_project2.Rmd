@@ -354,7 +354,7 @@ modelCor(resamples)
 ```{r}
 ensemble1 <- caretStack(
   mod_list,
-  method="glmnet",
+  method="glm",
   metric="RMSE",
   trControl=trainControl(
     method="cv",
@@ -364,19 +364,10 @@ ensemble1 <- caretStack(
 )
 ensemble1
 ```
-
-
 ```{r}
-ensemble2 <- caretEnsemble(mod_list, 
-                        metric = 'RMSE', 
-                        trControl=trainControl(
-                          method="cv",
-                          number=5,
-                          savePredictions="final"
-                        ))
-ensemble2
+predict(ensemble1, x_test) %>%
+  postResample(y_test)
 ```
-
 
 ####Predict on Eval Set
 
