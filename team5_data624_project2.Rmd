@@ -68,7 +68,17 @@ hist.data.frame(sd_data)
 ```{r}
 bev_raw <- read_csv('https://raw.githubusercontent.com/hovig/Team5-Data624-Project2/master/StudentData.csv') #%>%
 #drop_na(PH)
-bev_raw <- bev_raw %>% filter(!is.na(bev_raw$PH), bev_raw$PH < 9)
+```
+
+```{r}
+bev_raw %>%
+  ggplot(aes(PH, fill=PH > 9)) + 
+  geom_histogram(bins=30) +
+  theme_bw() +
+  theme(legend.position='center') +
+  labs(y='Count', title='PH Levels in Dataset')
+
+bev_raw <- bev_raw %>% filter(!is.na(bev_raw$PH), bev_raw$PH < 9) 
 ```
 
 ```{r}
