@@ -18,6 +18,7 @@ library(kableExtra)
 library(caretEnsemble)
 library(mice)
 library(kableExtra)
+library(xgboost)
 #library(parallel)
 library(doParallel)
 library(ggplot2)
@@ -25,6 +26,7 @@ library(Hmisc)
 library(psych)
 library(reshape2)
 library(gridExtra)
+library(rpart.plot)
 suppressWarnings(suppressMessages(library(data.table)))
 suppressWarnings(suppressMessages(library(openxlsx)))
 suppressWarnings(suppressMessages(library(psych)))
@@ -170,14 +172,14 @@ From the perspective of understanding the manufacturing process, the model stack
 
 ```{r}
 #svm_grid <- expand.grid(.C = c(.5,1,2,4,8,16,32,64,128), .sigma = c(.005,.01,.5, .1))
-xgb_grid <- expand.grid(eta = c(.025, .05), nrounds = c(750,1000), max_depth = c(3,5,7,9), gamma = c(0),
+xgb_grid <- expand.grid(eta = c(.025, .05), nrounds = c(1000), max_depth = c(5,6,7), gamma = c(0),
                           colsample_bytree = c(.6),
                           min_child_weight = c(.6,1),
                           subsample = c(.6))
 cub_grid <- expand.grid(.committees = c(1,3,5), .neighbors = c(1,3,5,7,9))
 #svm_grid <- expand.grid(.C = c(.5,1,2,4,8,16,32,64,128), .sigma = c(.005,.01,.5, .1))
 mars_grid <- expand.grid(.degree = c(1,2), .nprune = seq(16,36,4))
-dart_grid <- expand.grid(eta = c(.025), nrounds = c(1000), gamma = c(.1), skip_drop = c(.2,.4,.6), rate_drop = c(.2,.4,.6), max_depth = c(5,6),
+dart_grid <- expand.grid(eta = c(.025), nrounds = c(1000), gamma = c(.001,.1), skip_drop = c(.4,.6), rate_drop = c(.4,.6), max_depth = c(6,7,8),
 colsample_bytree = c(.6),
 min_child_weight = c(.6),
 subsample = c(.6))
@@ -187,7 +189,7 @@ tuning_list <-list(
   xgbd = caretModelSpec(method="xgbDART", tuneGrid = dart_grid),
   cub = caretModelSpec(method="cubist", tuneGrid = cub_grid),
 #  svm = caretModelSpec(method="rf", tuneGrid = svm_grid),
-  rf = caretModelSpec(method="rf", tuneLength = 8),
+  rf = caretModelSpec(method="rf", tuneLength = 8, importance = TRUE),
   mars = caretModelSpec(method="bagEarth", tuneGrid = mars_grid)
 )
 
@@ -213,7 +215,7 @@ mod_list <- caretList(
 
 ####MARS
 
-```{r echo = F}
+```{r }
 #helper function
 show_results <- function(model){ 
   rslts <- model$results %>%
@@ -225,6 +227,7 @@ show_results <- function(model){
 ```{r}
 
 show_results(mod_list$mars)
+plot(mod_list$mars, metric = "RMSE")
 ```
 
 
@@ -250,7 +253,7 @@ predict(mod_list$rf, x_test) %>%
 
 ```{r}
 show_results(mod_list$cub)
-
+plot(mod_list$cub, metric = "RMSE")
 ```
 
 
@@ -264,6 +267,7 @@ predict(mod_list$cub, x_test) %>%
 ```{r}
   
 show_results(mod_list$xgbt)
+plot(mod_list$xgbt, metric = "RMSE")
 ```
 
 
@@ -275,12 +279,8 @@ predict(mod_list$xgbt, x_test) %>%
 ####XGB Dart
 
 ```{r}
-
-  
 show_results(mod_list$xgbd)
-
-varImp(mod_list$xgbd)
-
+plot(mod_list$xgbd, metric = "RMSE")
 ```
 
 ```{r}
@@ -299,7 +299,35 @@ p3 <- varImp(mod_list$xgbd) %>%
   plot(top = 10, main = 'XGBDart')
 p4 <- varImp(mod_list$mars) %>%
   plot(top = 10, main = 'MARS')
-grid.arrange(p1,p2,p3,p4, nrow = 2, ncol = 2)
+p5 <- varImp(mod_list$rf) %>%
+  plot(top = 10, main = 'RF')
+grid.arrange(p1,p2,p3,p4,p5, nrow = 3, ncol = 2)
+```
+
+**Variable Counts among the Models**
+
+```{r}
+top_10 <- function(model) {
+  varImp(model)$importance %>%
+  rownames_to_column('var') %>%
+  arrange(desc(Overall)) %>%
+  head(10) %>%
+  select(var) 
+}
+
+rbind(top_10(mod_list$xgbt), top_10(mod_list$xgbd), top_10(mod_list$cub), top_10(mod_list$mars), top_10(mod_list$rf)) %>%
+  group_by(var) %>%
+  summarise(ModelCount = n()) %>%
+  arrange(desc(ModelCount)) %>%
+  kable () %>% kable_styling(bootstrap_options = "striped", full_width = F)
+
+```
+
+**Best Single Tree**
+
+```{r}
+rp_mod <- rpart::rpart(ph ~ ., data = data.frame(bev_imputed, ph = y), method = 'anova')
+rpart.plot(rp_mod, uniform=TRUE)
 ```
 
 ####Test Stack
@@ -325,7 +353,10 @@ ensemble1 <- caretStack(
 ensemble1
 ```
 
-
+```{r}
+predict(ensemble1, x_test) %>%
+  postResample(y_test)
+```
 
 ```{r}
 ensemble2 <- caretEnsemble(mod_list, 
@@ -336,6 +367,12 @@ ensemble2 <- caretEnsemble(mod_list,
                           savePredictions="final"
                         ))
 ensemble2
-stopCluster(cl)
 ```
+
+```{r}
+predict(ensemble2, x_test) %>%
+  postResample(y_test)
+```
+
+####Predict on Eval Set
 
