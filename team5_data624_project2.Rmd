@@ -66,8 +66,9 @@ hist.data.frame(sd_data)
 ####Process Data
 
 ```{r}
-bev_raw <- read_csv('https://raw.githubusercontent.com/hovig/Team5-Data624-Project2/master/StudentData.csv') %>%
-drop_na(PH)
+bev_raw <- read_csv('https://raw.githubusercontent.com/hovig/Team5-Data624-Project2/master/StudentData.csv') #%>%
+#drop_na(PH)
+bev_raw <- bev_raw %>% filter(!is.na(bev_raw$PH), bev_raw$PH < 9)
 ```
 
 ```{r}
