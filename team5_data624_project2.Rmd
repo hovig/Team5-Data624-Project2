@@ -5,10 +5,6 @@ date: "4/20/2019"
 output: html_document
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, message = F, warning = F)
-```
-
 ```{r echo=FALSE, message=FALSE, warning=FALSE, Load_packages}
 library("readxl")
 library(httr)
@@ -18,15 +14,18 @@ library(kableExtra)
 library(caretEnsemble)
 library(mice)
 library(kableExtra)
-library(xgboost)
-#library(parallel)
+library(parallel)
 library(doParallel)
 library(ggplot2)
 library(Hmisc)
 library(psych)
 library(reshape2)
+library(glmnet)
+library(DT)
+library(corrplot)
 library(gridExtra)
 library(rpart.plot)
+library(randomForest)
 suppressWarnings(suppressMessages(library(data.table)))
 suppressWarnings(suppressMessages(library(openxlsx)))
 suppressWarnings(suppressMessages(library(psych)))
@@ -36,31 +35,22 @@ suppressWarnings(suppressMessages(library(VIM)))
 suppressWarnings(suppressMessages(library(corrplot)))
 suppressWarnings(suppressMessages(library(caret)))
 suppressWarnings(suppressMessages(library(PerformanceAnalytics)))
-#suppressWarnings(suppressMessages(library(DMwR)))
 ```
 
 
 ```{r}
 student_evaluation_gh_file <- "https://github.com/hovig/Team5-Data624-Project2/raw/master/StudentEvaluation.xlsx"
 student_data_gh_file <- "https://github.com/hovig/Team5-Data624-Project2/raw/master/StudentData.xlsx"
-
 se_temp_file <- tempfile(fileext = ".xlsx")
 sd_temp_file <- tempfile(fileext = ".xlsx")
-
 se_data <- GET(student_evaluation_gh_file, authenticate(Sys.getenv("GITHUB_PAT"), ""), write_disk(path = se_temp_file))
 df_data <- GET(student_data_gh_file, authenticate(Sys.getenv("GITHUB_PAT"), ""), write_disk(path = sd_temp_file))
-
 se_data <- readxl::read_excel(se_temp_file)
 sd_data <- readxl::read_excel(sd_temp_file)
-
 ```
 
 ```{r}
 hist.data.frame(se_data)
-```
-
-
-```{r}
 hist.data.frame(sd_data)
 ```
 
@@ -68,11 +58,8 @@ hist.data.frame(sd_data)
 ####Process Data
 
 ```{r}
-bev_raw <- read_csv('https://raw.githubusercontent.com/hovig/Team5-Data624-Project2/master/StudentData.csv') #%>%
-#drop_na(PH)
-```
+bev_raw <- read_csv('https://raw.githubusercontent.com/hovig/Team5-Data624-Project2/master/StudentData.csv') 
 
-```{r}
 bev_raw %>%
   ggplot(aes(PH, fill=PH > 9)) + 
   geom_histogram(bins=30) +
@@ -96,10 +83,7 @@ describe(bev_raw %>% select(-`Brand Code`))
 #### Zero variance
 
 ```{r}
-df1 <- bev_raw %>% select(-`Brand Code`) %>% mutate_each(funs(as.numeric(.)))%>%complete.cases()%>%
-       as.data.frame()
-
-
+df1 <- bev_raw %>% select(-`Brand Code`) %>% mutate_each(funs(as.numeric(.))) %>% complete.cases() %>% as.data.frame()
 names(df1)[nearZeroVar(df1)]
 nzv <- nearZeroVar(bev_raw,saveMetrics= TRUE)
 nzv[nzv$nzv,]
@@ -128,6 +112,7 @@ bev_raw%>%
   ggplot(aes(value)) +                     
     facet_wrap(~ key, scales = "free") +  
     geom_density()  
+
 bev_raw%>%
  select(-`Brand Code`) %>%   
   select(`Carb Flow`, Density, MFR, Balling, `Pressure Vacuum`, PH, `Oxygen Filler`, `Bowl Setpoint`, `Pressure Setpoint`, `Air Pressurer`, `Alch Rel`,`Carb Rel`,`Balling Lvl`)   %>%               
@@ -152,16 +137,12 @@ cols <- str_replace(colnames(bev), '\\s', '')
 colnames(bev) <- cols
 bev <- mutate(bev, BrandCode = ifelse(is.na(BrandCode), 'Unknown', BrandCode))
 y <- bev_raw$PH
-
 zero_vars <- nearZeroVar(bev)
 bev_new <- bev[, -zero_vars]
-
 pred <- mice(data = bev_new, m = 2, method = 'rf', maxit = 3)
 bev_imputed <- complete(pred)
-
 form <- dummyVars(~ ., data = bev_imputed)
 bev_imputed <- predict(form, bev_imputed) %>% data.frame() %>% as.matrix()
-write.csv(bev_imputed, file = "predictions.csv")
 ```
 
 ####Test Train Split
@@ -170,7 +151,6 @@ write.csv(bev_imputed, file = "predictions.csv")
 samples <- createDataPartition(y, p = .75, list = F)
 x_train <- bev_imputed[samples, ]
 x_test<- bev_imputed[-samples, ]
-
 y_train <- y[samples]
 y_test <- y[-samples]
 ```
@@ -182,36 +162,35 @@ For state-of-the-art prediction quality, we will use a model stack.  This will c
 From the perspective of understanding the manufacturing process, the model stack will also provide benefits.  The stack is like a panel of experts, each looking at the data through slightly different lenses to form their diagnoses.  By looking at the predictors each model uses, we can gather assemble a complete picture of the factors that affect our manufacturing process.  
 
 
-```{r}
-#xgb_grid <- expand.grid(eta = c(.025, .05), nrounds = c(1000), max_depth = c(5,6,7), gamma = c(0), colsample_bytree = c(.6), min_child_weight = c(.6,1), subsample = c(.6))
-#cub_grid <- expand.grid(.committees = c(1,3,5), .neighbors = c(1,3,5,7,9))
-#mars_grid <- expand.grid(.degree = c(1,2), .nprune = seq(16,36,4))
-#dart_grid <- expand.grid(eta = c(.025), nrounds = c(1000), gamma = c(.001,.1), skip_drop = c(.4,.6), rate_drop = c(.4,.6), max_depth = c(6,7,8), colsample_bytree = c(.6), min_child_weight = c(.6), subsample = c(.6))
-
-xgb_grid <- expand.grid(eta = c(.025), nrounds = c(1000), max_depth = c(5), gamma = c(0), colsample_bytree = c(.6), min_child_weight = c(.6), subsample = c(.6))
-cub_grid <- expand.grid(.committees = c(5), .neighbors = c(7))
-mars_grid <- expand.grid(.degree = c(2), .nprune = 24)
-dart_grid <- expand.grid(eta = c(.025), nrounds = c(1000), gamma = c(.1), skip_drop = c(.6), rate_drop = c(.4), max_depth = c(6), colsample_bytree = c(.6), min_child_weight = c(.6), subsample = c(.6))
-rf_grid <- expand.grid(mtry = 25)
-
+```{r warning=FALSE}
+#svm_grid <- expand.grid(.C = c(.5,1,2,4,8,16,32,64,128), .sigma = c(.005,.01,.5, .1))
+xgb_grid <- expand.grid(eta = c(.025, .05), nrounds = c(1000), max_depth = c(5,6,7), gamma = c(0),
+                          colsample_bytree = c(.6),
+                          min_child_weight = c(.6,1),
+                          subsample = c(.6))
+cub_grid <- expand.grid(.committees = c(1,3,5), .neighbors = c(1,3,5,7,9))
+#svm_grid <- expand.grid(.C = c(.5,1,2,4,8,16,32,64,128), .sigma = c(.005,.01,.5, .1))
+mars_grid <- expand.grid(.degree = c(1,2), .nprune = seq(16,36,4))
+dart_grid <- expand.grid(eta = c(.025), nrounds = c(1000), gamma = c(.001,.1), skip_drop = c(.4,.6), rate_drop = c(.4,.6), max_depth = c(6,7,8),
+colsample_bytree = c(.6),
+min_child_weight = c(.6),
+subsample = c(.6))
 tuning_list <-list(
-  caretModelSpec(method="xgbTree", tuneGrid = xgb_grid),
-  caretModelSpec(method="xgbDART", tuneGrid = dart_grid),
-  caretModelSpec(method="cubist", tuneGrid = cub_grid),
-  caretModelSpec(method="rf", tuneGrid = rf_grid, importance = TRUE),
-  caretModelSpec(method="bagEarth", tuneGrid = mars_grid)
+  xgbt = caretModelSpec(method="xgbTree", tuneGrid = xgb_grid),
+  xgbd = caretModelSpec(method="xgbDART", tuneGrid = dart_grid),
+  cub = caretModelSpec(method="cubist", tuneGrid = cub_grid),
+  #svm = caretModelSpec(method="rf", tuneGrid = svm_grid),
+  rf = caretModelSpec(method="rf", tuneLength = 8, importance = TRUE),
+  mars = caretModelSpec(method="bagEarth", tuneGrid = mars_grid)
 )
-
 cl <- makeCluster(detectCores())
 registerDoParallel(cl)
 set.seed(42)
-
 my_control <- trainControl(method = 'cv',
                            number = 5,
                            savePredictions = 'final',
                            index = createFolds(y_train, 5),
                            allowParallel = TRUE) 
-
 mod_list <- caretList(
   x = x_train,
   y = y_train,
@@ -221,11 +200,10 @@ mod_list <- caretList(
 )
 ```
 
-
 ####MARS
 
-```{r }
-#helper function
+```{r}
+# helper function
 show_results <- function(model){ 
   rslts <- model$results %>%
     arrange(RMSE)
@@ -234,14 +212,12 @@ show_results <- function(model){
 ```
 
 ```{r}
-
-show_results(mod_list$bagEarth)
-#plot(mod_list$mars, metric = "RMSE")
+show_results(mod_list$mars)
+plot(mod_list$mars, metric = "RMSE")
 ```
 
-
 ```{r}
-predict(mod_list$bagEarth, x_test) %>%
+predict(mod_list$mars, x_test) %>%
   postResample(y_test)
 ```
 
@@ -249,9 +225,7 @@ predict(mod_list$bagEarth, x_test) %>%
 
 ```{r}
 show_results(mod_list$rf)
-
 ```
-
 
 ```{r}
 predict(mod_list$rf, x_test) %>%
@@ -261,13 +235,13 @@ predict(mod_list$rf, x_test) %>%
 ####Cubist
 
 ```{r}
-show_results(mod_list$cubist)
-#plot(mod_list$cub, metric = "RMSE")
+show_results(mod_list$cub)
+plot(mod_list$cub, metric = "RMSE")
 ```
 
 
 ```{r}
-predict(mod_list$cubist, x_test) %>%
+predict(mod_list$cub, x_test) %>%
   postResample(y_test)
 ```
 
@@ -275,38 +249,38 @@ predict(mod_list$cubist, x_test) %>%
 
 ```{r}
   
-show_results(mod_list$xgbTree)
-#plot(mod_list$xgbt, metric = "RMSE")
+show_results(mod_list$xgbt)
+plot(mod_list$xgbt, metric = "RMSE")
 ```
 
 
 ```{r}
-predict(mod_list$xgbTree, x_test) %>%
+predict(mod_list$xgbt, x_test) %>%
   postResample(y_test)
 ```
 
 ####XGB Dart
 
 ```{r}
-show_results(mod_list$xgbDART)
-#plot(mod_list$xgbd, metric = "RMSE")
+show_results(mod_list$xgbd)
+plot(mod_list$xgbd, metric = "RMSE")
 ```
 
 ```{r}
-predict(mod_list$xgbDART, x_test) %>%
+predict(mod_list$xgbd, x_test) %>%
   postResample(y_test)
 ```
 
 ####Variable Importances
 
 ```{r}
-p1 <- varImp(mod_list$cubist) %>%
+p1 <- varImp(mod_list$cub) %>%
   plot(top = 10, main = 'Cubist')
-p2 <- varImp(mod_list$xgbTree) %>%
+p2 <- varImp(mod_list$xgbt) %>%
   plot(top = 10, main = 'XGBTrees')
-p3 <- varImp(mod_list$xgbDART) %>%
+p3 <- varImp(mod_list$xgbd) %>%
   plot(top = 10, main = 'XGBDart')
-p4 <- varImp(mod_list$bagEarth) %>%
+p4 <- varImp(mod_list$mars) %>%
   plot(top = 10, main = 'MARS')
 p5 <- varImp(mod_list$rf) %>%
   plot(top = 10, main = 'RF')
@@ -323,13 +297,11 @@ top_10 <- function(model) {
   head(10) %>%
   select(var) 
 }
-
-rbind(top_10(mod_list$xgbDART), top_10(mod_list$xgbTree), top_10(mod_list$cubist), top_10(mod_list$bagEarth), top_10(mod_list$rf)) %>%
+rbind(top_10(mod_list$xgbt), top_10(mod_list$xgbd), top_10(mod_list$cub), top_10(mod_list$mars), top_10(mod_list$rf)) %>%
   group_by(var) %>%
   summarise(ModelCount = n()) %>%
   arrange(desc(ModelCount)) %>%
   kable () %>% kable_styling(bootstrap_options = "striped", full_width = F)
-
 ```
 
 **Best Single Tree**
@@ -342,7 +314,6 @@ rpart.plot(rp_mod, uniform=TRUE)
 ####Test Stack
 
 ```{r}
-
 resamples <- resamples(mod_list)
 modelCor(resamples)
 ```
@@ -352,10 +323,11 @@ correlations <- cor(modelCor(resamples))
 corrplot::corrplot(correlations, order = "FPC", diag = TRUE)
 ```
 
+
 ```{r}
 ensemble1 <- caretStack(
   mod_list,
-  method="glm",
+  method="glmnet",
   metric="RMSE",
   trControl=trainControl(
     method="cv",
@@ -365,10 +337,7 @@ ensemble1 <- caretStack(
 )
 ensemble1
 ```
-```{r}
-predict(ensemble1, x_test) %>%
-  postResample(y_test)
-```
+
 
 ```{r}
 ensemble2 <- caretEnsemble(mod_list, 
@@ -389,6 +358,6 @@ y <- randomForest(x = x_train, y = y_train, importance=TRUE, ntree=1000)
 predictions <- predict(y, newdata=x_test)
 predictions %>% tibble::enframe(name = NULL) %>% datatable()
 predictions %>% tibble::enframe(name = NULL) %>% rownames_to_column() %>% rename(PH = value, row = rowname)
-  write.csv(predictions, file = "predictions.csv")
+write.csv(predictions, file = "predictions.csv")
 ```
 
