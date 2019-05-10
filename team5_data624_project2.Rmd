@@ -183,26 +183,23 @@ From the perspective of understanding the manufacturing process, the model stack
 
 
 ```{r}
-#svm_grid <- expand.grid(.C = c(.5,1,2,4,8,16,32,64,128), .sigma = c(.005,.01,.5, .1))
-xgb_grid <- expand.grid(eta = c(.025, .05), nrounds = c(1000), max_depth = c(5,6,7), gamma = c(0),
-                          colsample_bytree = c(.6),
-                          min_child_weight = c(.6,1),
-                          subsample = c(.6))
-cub_grid <- expand.grid(.committees = c(1,3,5), .neighbors = c(1,3,5,7,9))
-#svm_grid <- expand.grid(.C = c(.5,1,2,4,8,16,32,64,128), .sigma = c(.005,.01,.5, .1))
-mars_grid <- expand.grid(.degree = c(1,2), .nprune = seq(16,36,4))
-dart_grid <- expand.grid(eta = c(.025), nrounds = c(1000), gamma = c(.001,.1), skip_drop = c(.4,.6), rate_drop = c(.4,.6), max_depth = c(6,7,8),
-colsample_bytree = c(.6),
-min_child_weight = c(.6),
-subsample = c(.6))
+#xgb_grid <- expand.grid(eta = c(.025, .05), nrounds = c(1000), max_depth = c(5,6,7), gamma = c(0), colsample_bytree = c(.6), min_child_weight = c(.6,1), subsample = c(.6))
+#cub_grid <- expand.grid(.committees = c(1,3,5), .neighbors = c(1,3,5,7,9))
+#mars_grid <- expand.grid(.degree = c(1,2), .nprune = seq(16,36,4))
+#dart_grid <- expand.grid(eta = c(.025), nrounds = c(1000), gamma = c(.001,.1), skip_drop = c(.4,.6), rate_drop = c(.4,.6), max_depth = c(6,7,8), colsample_bytree = c(.6), min_child_weight = c(.6), subsample = c(.6))
+
+xgb_grid <- expand.grid(eta = c(.025), nrounds = c(1000), max_depth = c(5), gamma = c(0), colsample_bytree = c(.6), min_child_weight = c(.6), subsample = c(.6))
+cub_grid <- expand.grid(.committees = c(5), .neighbors = c(7))
+mars_grid <- expand.grid(.degree = c(2), .nprune = 24)
+dart_grid <- expand.grid(eta = c(.025), nrounds = c(1000), gamma = c(.1), skip_drop = c(.6), rate_drop = c(.4), max_depth = c(6), colsample_bytree = c(.6), min_child_weight = c(.6), subsample = c(.6))
+rf_grid <- expand.grid(mtry = 25)
 
 tuning_list <-list(
-  xgbt = caretModelSpec(method="xgbTree", tuneGrid = xgb_grid),
-  xgbd = caretModelSpec(method="xgbDART", tuneGrid = dart_grid),
-  cub = caretModelSpec(method="cubist", tuneGrid = cub_grid),
-#  svm = caretModelSpec(method="rf", tuneGrid = svm_grid),
-  rf = caretModelSpec(method="rf", tuneLength = 8, importance = TRUE),
-  mars = caretModelSpec(method="bagEarth", tuneGrid = mars_grid)
+  caretModelSpec(method="xgbTree", tuneGrid = xgb_grid),
+  caretModelSpec(method="xgbDART", tuneGrid = dart_grid),
+  caretModelSpec(method="cubist", tuneGrid = cub_grid),
+  caretModelSpec(method="rf", tuneGrid = rf_grid, importance = TRUE),
+  caretModelSpec(method="bagEarth", tuneGrid = mars_grid)
 )
 
 cl <- makeCluster(detectCores())
@@ -238,13 +235,13 @@ show_results <- function(model){
 
 ```{r}
 
-show_results(mod_list$mars)
-plot(mod_list$mars, metric = "RMSE")
+show_results(mod_list$bagEarth)
+#plot(mod_list$mars, metric = "RMSE")
 ```
 
 
 ```{r}
-predict(mod_list$mars, x_test) %>%
+predict(mod_list$bagEarth, x_test) %>%
   postResample(y_test)
 ```
 
@@ -264,13 +261,13 @@ predict(mod_list$rf, x_test) %>%
 ####Cubist
 
 ```{r}
-show_results(mod_list$cub)
-plot(mod_list$cub, metric = "RMSE")
+show_results(mod_list$cubist)
+#plot(mod_list$cub, metric = "RMSE")
 ```
 
 
 ```{r}
-predict(mod_list$cub, x_test) %>%
+predict(mod_list$cubist, x_test) %>%
   postResample(y_test)
 ```
 
@@ -278,38 +275,38 @@ predict(mod_list$cub, x_test) %>%
 
 ```{r}
   
-show_results(mod_list$xgbt)
-plot(mod_list$xgbt, metric = "RMSE")
+show_results(mod_list$xgbTree)
+#plot(mod_list$xgbt, metric = "RMSE")
 ```
 
 
 ```{r}
-predict(mod_list$xgbt, x_test) %>%
+predict(mod_list$xgbTree, x_test) %>%
   postResample(y_test)
 ```
 
 ####XGB Dart
 
 ```{r}
-show_results(mod_list$xgbd)
-plot(mod_list$xgbd, metric = "RMSE")
+show_results(mod_list$xgbDART)
+#plot(mod_list$xgbd, metric = "RMSE")
 ```
 
 ```{r}
-predict(mod_list$xgbd, x_test) %>%
+predict(mod_list$xgbDART, x_test) %>%
   postResample(y_test)
 ```
 
 ####Variable Importances
 
 ```{r}
-p1 <- varImp(mod_list$cub) %>%
+p1 <- varImp(mod_list$cubist) %>%
   plot(top = 10, main = 'Cubist')
-p2 <- varImp(mod_list$xgbt) %>%
+p2 <- varImp(mod_list$xgbTree) %>%
   plot(top = 10, main = 'XGBTrees')
-p3 <- varImp(mod_list$xgbd) %>%
+p3 <- varImp(mod_list$xgbDART) %>%
   plot(top = 10, main = 'XGBDart')
-p4 <- varImp(mod_list$mars) %>%
+p4 <- varImp(mod_list$bagEarth) %>%
   plot(top = 10, main = 'MARS')
 p5 <- varImp(mod_list$rf) %>%
   plot(top = 10, main = 'RF')
@@ -327,7 +324,7 @@ top_10 <- function(model) {
   select(var) 
 }
 
-rbind(top_10(mod_list$xgbt), top_10(mod_list$xgbd), top_10(mod_list$cub), top_10(mod_list$mars), top_10(mod_list$rf)) %>%
+rbind(top_10(mod_list$xgbDART), top_10(mod_list$xgbTree), top_10(mod_list$cubist), top_10(mod_list$bagEarth), top_10(mod_list$rf)) %>%
   group_by(var) %>%
   summarise(ModelCount = n()) %>%
   arrange(desc(ModelCount)) %>%
