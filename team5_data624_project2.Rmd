@@ -347,6 +347,10 @@ resamples <- resamples(mod_list)
 modelCor(resamples)
 ```
 
+```{r}
+correlations <- cor(modelCor(resamples))
+corrplot::corrplot(correlations, order = "FPC", diag = TRUE)
+```
 
 ```{r}
 ensemble1 <- caretStack(
@@ -366,5 +370,25 @@ predict(ensemble1, x_test) %>%
   postResample(y_test)
 ```
 
-####Predict on Eval Set
+```{r}
+ensemble2 <- caretEnsemble(mod_list, 
+                        metric = 'RMSE', 
+                        trControl=trainControl(
+                          method="cv",
+                          number=5,
+                          savePredictions="final"
+                        ))
+ensemble2
+```
+
+
+####Predict on Train/Test Sets
+
+```{r}
+y <- randomForest(x = x_train, y = y_train, importance=TRUE, ntree=1000)
+predictions <- predict(y, newdata=x_test)
+predictions %>% tibble::enframe(name = NULL) %>% datatable()
+predictions %>% tibble::enframe(name = NULL) %>% rownames_to_column() %>% rename(PH = value, row = rowname)
+  write.csv(predictions, file = "predictions.csv")
+```
 
