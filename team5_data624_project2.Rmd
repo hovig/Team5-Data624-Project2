@@ -167,6 +167,8 @@ bev_imputed <- predict(form, bev_imputed) %>% data.frame() %>% as.matrix()
 
 ####Test Train Split
 
+We will split the data into train/test sets before running cross validaiton.  This will allow us to make sure that predictions are consistent at all levels of PH.
+
 ```{r}
 bev_eval <- bev_imputed[2567:2833,]
 bev_train <- bev_imputed[1:2566,]
@@ -301,9 +303,14 @@ predict(mod_list$xgbDART, x_test) %>%
   postResample(y_test)
 ```
 
+
+**Assesment**
+
+While the XGBTee model offers the lowest RMSE, it still only explains about 50% of the variance in PH.  There is plenty of room for the other models to offer value.  We will use the hyperparameters yielding the best RMSE in our final ensemble that will be built later.
+
 ####Variable Importances
 
-```{r}
+```{r, fig.height = 8, fig.width=12}
 p1 <- varImp(mod_list$cubist) %>%
   plot(top = 10, main = 'Cubist')
 p2 <- varImp(mod_list$xgbTree) %>%
@@ -316,6 +323,15 @@ p5 <- varImp(mod_list$rf) %>%
   plot(top = 10, main = 'RF')
 grid.arrange(p1,p2,p3,p4,p5, nrow = 3, ncol = 2)
 ```
+
+Observations:
+
+- The top predictor, MnFlow, is consistent throughout the set of models
+- The XGBoost models are similar in variables, but less similar in their distributions of importance
+- After the top 5, divergence increases
+
+Based on what we see, there are more factors contributing to PH with the ensemble than with a single model.  We'll confirm this by looking at the count by predictor among each top 10:
+
 
 **Variable Counts among the Models**
 
@@ -336,20 +352,28 @@ rbind(top_10(mod_list$xgbDART), top_10(mod_list$xgbTree), top_10(mod_list$cubist
 
 ```
 
+
 **Best Single Tree**
+
+Because 4 of the 5 models in the ensemble are tree-based, looking a single decision tree modle will give us an idea of not just what predictors are important, but how they are being used to form predictions.
 
 ```{r}
 rp_mod <- rpart::rpart(ph ~ ., data = data.frame(bev_train, ph = y), method = 'anova')
 rpart.plot(rp_mod, uniform=TRUE)
 ```
 
-####Test Stack
+####Test Model Stack
+
+Now that our models are optimized and understood, we will form the ensemble and test the results.  We first look at their prediction correlations to confirm that the stack, intuitivley, be effective.  The lower the correlation between the models, the more effective the stack will be.  
 
 ```{r}
 
 resamples <- resamples(mod_list)
 modelCor(resamples)
 ```
+
+*Our model list has negative correlations, indicating that it will be effective.*
+
 
 
 ```{r}
@@ -366,17 +390,33 @@ ensemble1 <- caretStack(
 ensemble1
 ```
 
+*We see a several percent improvement over the best single model.*  
 
 ```{r}
-predict(ensemble1, x_test) %>%
-  postResample(y_test)
+preds <- predict(ensemble1, x_test) 
+preds %>% postResample(y_test)
 ```
+
+**Predicted Vs Actual**
+
+```{r}
+preds_df <- data.frame(predicted = preds, actual = y_test)
+ggplot(preds_df) + geom_point(aes(x = predicted, y = actual)) + geom_smooth(aes(x = predicted, y = actual))
+```
+
+On the test set, the ensemble's predictoins are consistent throughout the range of PH.  Consitent quality is, theoretically, a feature of ensemble models because the models are weighted such that predictions are maximized.  If one model predicts better at lower PH, it will be upweighted over that range.  There are several outliers, but when not all of the variance is explainable, this is unavoidable.
 
 ####Predict on Eval Set
 
-*Build Ensemble Model with entire dataset*
+With our hyperparameters of the individual models optimized, we want to provide each model the entire training set and build the meta-model based on these optimized single models.
 
 ```{r}
+#xgb_grid <- expand.grid(eta = c(.01,.025), nrounds = c(750,1000), max_depth = c(5,6,7), gamma = c(.1,0), colsample_bytree = c(.8), min_child_weight = c(.4,.8), subsample = c(.8))
+#cub_grid <- expand.grid(.committees = c(1,3,5), .neighbors = c(1,3,5,7,9))
+#mars_grid <- expand.grid(.degree = c(1,2), .nprune = seq(16,36,4))
+#dart_grid <- expand.grid(eta = c(.025), nrounds = c(1000), gamma = c(.001,.1), skip_drop = c(.4,.8), rate_drop = c(.4,.8), #max_depth = c(6,7,8), colsample_bytree = c(.8), min_child_weight = c(.8), subsample = c(.8))
+#rf_grid <- expand.grid(mtry = c(5,10,15,20,25,30))
+
 xgb_grid <- expand.grid(eta = c(.01), nrounds = c(1000), max_depth = c(6), gamma = c(0), colsample_bytree = c(.8), min_child_weight = c(.8), subsample = c(.8))
 cub_grid <- expand.grid(.committees = c(5), .neighbors = c(7))
 mars_grid <- expand.grid(.degree = c(2), .nprune = 24)
@@ -396,7 +436,7 @@ tuning_list <-list(
 my_control <- trainControl(method = 'cv',
                            number = 5,
                            savePredictions = 'final',
-                           index = createFolds(y_train, 5),
+                           index = createFolds(y, 5),
                            allowParallel = TRUE) 
 
 mod_list <- caretList(
@@ -420,7 +460,19 @@ final_ensemble
 
 ```
 
-**Prepare Eval Data**
+*With more data available, the ensemble improve around 6%.  Our model is considerably more predictive than a "baseline" single model.*
+
+**Ensemble Model Importances**
+
+```{r}
+plot(varImp(final_ensemble$ens_model))
+```
+
+
+*The MARS model is excluded, but all four tree models contribute the the final prediction*
+
+
+**Export Predictions**
 
 ```{r}
 predictions <- predict(final_ensemble, bev_eval)
