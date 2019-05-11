@@ -23,20 +23,12 @@ knitr::opts_chunk$set(echo = TRUE, message = F, warning = F)
 This is role playing.  I am your new boss.  I am in charge of production at ABC Beverage and you are a team of data scientists reporting to me.  My leadership has told me that new regulations are requiring us to understand our manufacturing process, the predictive factors and be able to report to them our predictive model of PH. Please use the historical data set I am providing.  Build and report the factors in BOTH a technical and non-technical report.  I like to use Word and Excel.  Please provide your non-technical report in a  business friendly readable document and your predictions in an Excel readable format.   The technical report should show clearly the models you tested and how you selected your final approach. Please submit both Rpubs links and .rmd files or other readable formats for technical and non-technical reports.  Also submit the excel file showing the prediction of your models for pH.
 
 #Executive Summary
-New Regulations by ABC beverage company leadership requires the company’s production unit  to better understand the manufacturing process, the predictive factors and their relationship to the PH of the beverages.
+New Regulations by ABC beverage company leadership requires the company's production unit  to better understand the manufacturing process, the predictive factors and their relationship to the PH of the beverages.
 
 #Research Statement
 The research is an effort to find the predictive variables related to the ph of the beverages and build the predictive model for ph of beverages
 
 #Data Collection
-The data set is a historic data containing predictors associated to the PH and is provided in an excel file. We will utilize this historic dataset to analyze and predict the PH of beverages. Two excel files are provided: 
-
-+ The training data (StudentData.xlsx) 
-+ The test data (StudentEvaluation.xlsx).
-
-
-
-#Data Ingestion
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE, Load_packages}
 library("readxl")
@@ -67,15 +59,39 @@ suppressWarnings(suppressMessages(library(VIM)))
 suppressWarnings(suppressMessages(library(corrplot)))
 suppressWarnings(suppressMessages(library(caret)))
 suppressWarnings(suppressMessages(library(PerformanceAnalytics)))
-#suppressWarnings(suppressMessages(library(DMwR)))
 ```
 
+The data set is a historic data containing predictors associated to the PH and is provided in an excel file. We will utilize this historic dataset to analyze and predict the PH of beverages. Two excel files are provided: 
+
++ The training data (StudentData.xlsx) 
++ The test data (StudentEvaluation.xlsx).
 
 ```{r}
 student_evaluation_gh_file <- "https://github.com/hovig/Team5-Data624-Project2/raw/master/StudentEvaluation.xlsx"
+student_data_gh_file <- "https://github.com/hovig/Team5-Data624-Project2/raw/master/StudentData.xlsx"
 se_temp_file <- tempfile(fileext = ".xlsx")
+sd_temp_file <- tempfile(fileext = ".xlsx")
 se_data <- GET(student_evaluation_gh_file, authenticate(Sys.getenv("GITHUB_PAT"), ""), write_disk(path = se_temp_file))
+df_data <- GET(student_data_gh_file, authenticate(Sys.getenv("GITHUB_PAT"), ""), write_disk(path = sd_temp_file))
 se_data <- readxl::read_excel(se_temp_file)
+sd_data <- readxl::read_excel(sd_temp_file)
+```
+
+```{r}
+dim(sd_data)
+colnames(sd_data)
+str(sd_data)
+```
+
+```{r}
+dim(se_data)
+colnames(se_data)
+str(se_data)
+```
+
+#Data Ingestion
+
+```{r}
 bev_raw <- read_csv('https://raw.githubusercontent.com/hovig/Team5-Data624-Project2/master/StudentData.csv') 
 head(bev_raw)
 ```
@@ -249,13 +265,8 @@ show_results <- function(model){
 ```
 
 ```{r}
-
 show_results(mod_list$bagEarth)
-#plot(mod_list$mars, metric = "RMSE")
-```
 
-
-```{r}
 predict(mod_list$bagEarth, x_test) %>%
   postResample(y_test)
 ```
@@ -265,10 +276,6 @@ predict(mod_list$bagEarth, x_test) %>%
 ```{r}
 show_results(mod_list$rf)
 
-```
-
-
-```{r}
 predict(mod_list$rf, x_test) %>%
   postResample(y_test)
 ```
@@ -277,11 +284,7 @@ predict(mod_list$rf, x_test) %>%
 
 ```{r}
 show_results(mod_list$cubist)
-#plot(mod_list$cub, metric = "RMSE")
-```
 
-
-```{r}
 predict(mod_list$cubist, x_test) %>%
   postResample(y_test)
 ```
@@ -289,9 +292,7 @@ predict(mod_list$cubist, x_test) %>%
 ##XGB Trees
 
 ```{r}
-  
 show_results(mod_list$xgbTree)
-#plot(mod_list$xgbt, metric = "RMSE")
 ```
 
 
@@ -304,10 +305,7 @@ predict(mod_list$xgbTree, x_test) %>%
 
 ```{r}
 show_results(mod_list$xgbDART)
-#plot(mod_list$xgbd, metric = "RMSE")
-```
 
-```{r}
 predict(mod_list$xgbDART, x_test) %>%
   postResample(y_test)
 ```
@@ -466,7 +464,6 @@ final_ensemble <- caretStack(
   )
 )
 final_ensemble$ens_model$results %>% kable () %>% kable_styling(bootstrap_options = "striped", full_width = F)
-
 ```
 
 *With more data available, the ensemble improve around 6%.  Our model is considerably more predictive than a "baseline" single model.*
