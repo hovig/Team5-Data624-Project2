@@ -135,6 +135,10 @@ We perform 3 data preparation steps
 Random Forest was chosen as the regression method in imputation because it requires very little tuning, allowing and there is no interface to tune the imputation model in MICE.
 
 ```{r results='hide'}
+cl <- makeCluster(detectCores())
+registerDoParallel(cl)
+set.seed(42)
+
 bev <- select(bev_raw, -PH) %>%
   union_all(se_data) #since we're not using the labels (y values), combining the sets for data clearning is fine
 cols <- str_replace(colnames(bev), '\\s', '')
@@ -194,10 +198,6 @@ tuning_list <-list(
   caretModelSpec(method="rf", tuneGrid = rf_grid, importance = TRUE),
   caretModelSpec(method="bagEarth", tuneGrid = mars_grid)
 )
-
-cl <- makeCluster(detectCores())
-registerDoParallel(cl)
-set.seed(42)
 
 my_control <- trainControl(method = 'cv',
                            number = 5,
