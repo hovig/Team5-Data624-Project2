@@ -497,6 +497,7 @@ At the beginning of this study, we were not informed about the nature of the ABC
 + Github : https://github.com/hovig/Team5-Data624-Project2
 + RPUBS: https://rpubs.com/hovig613/493738 
 + Prediction Results: https://github.com/hovig/Team5-Data624-Project2/blob/master/predictions.csv
-
++ Forecasting: Principles and Practice - 2nd edition: https://otexts.com/fpp2/
++ Applied Predictive Modeling: https://github.com/hovig/Team5-Data624-Project2/blob/master/applied-predictive-modeling-max-kuhn-kjell-johnson_1518.pdf
 
 
