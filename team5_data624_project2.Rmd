@@ -2,14 +2,41 @@
 title: "Team 5 - Data 624 - Project 2"
 author: "Ohannes (Hovig) Ohannessian, Niteen Kumar, Gurpreet Singh, Peter Goodridge"
 date: "4/20/2019"
-output: html_document
+output: 
+  html_document:
+    toc: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: false
+    number_section:  true
+    theme: cerulean
+    highlight:  tango
+editor_options: 
+  chunk_output_type: inline
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, message = F, warning = F)
 ```
 
-##Initialize and Load Data
+#Project Problem Statement
+This is role playing.  I am your new boss.  I am in charge of production at ABC Beverage and you are a team of data scientists reporting to me.  My leadership has told me that new regulations are requiring us to understand our manufacturing process, the predictive factors and be able to report to them our predictive model of PH. Please use the historical data set I am providing.  Build and report the factors in BOTH a technical and non-technical report.  I like to use Word and Excel.  Please provide your non-technical report in a  business friendly readable document and your predictions in an Excel readable format.   The technical report should show clearly the models you tested and how you selected your final approach. Please submit both Rpubs links and .rmd files or other readable formats for technical and non-technical reports.  Also submit the excel file showing the prediction of your models for pH.
+
+#Executive Summary
+New Regulations by ABC beverage company leadership requires the company’s production unit  to better understand the manufacturing process, the predictive factors and their relationship to the PH of the beverages.
+
+#Research Statement
+The research is an effort to find the predictive variables related to the ph of the beverages and build the predictive model for ph of beverages
+
+#Data Collection
+The data set is a historic data containing predictors associated to the PH and is provided in an excel file. We will utilize this historic dataset to analyze and predict the PH of beverages. Two excel files are provided: 
+
++ The training data (StudentData.xlsx) 
++ The test data (StudentEvaluation.xlsx).
+
+
+
+#Data Ingestion
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE, Load_packages}
 library("readxl")
@@ -21,7 +48,8 @@ library(caretEnsemble)
 library(mice)
 library(kableExtra)
 library(xgboost)
-#library(parallel)
+library(dplyr)
+library(parallel)
 library(doParallel)
 library(ggplot2)
 library(Hmisc)
@@ -45,19 +73,15 @@ suppressWarnings(suppressMessages(library(PerformanceAnalytics)))
 
 ```{r}
 student_evaluation_gh_file <- "https://github.com/hovig/Team5-Data624-Project2/raw/master/StudentEvaluation.xlsx"
-
 se_temp_file <- tempfile(fileext = ".xlsx")
-
 se_data <- GET(student_evaluation_gh_file, authenticate(Sys.getenv("GITHUB_PAT"), ""), write_disk(path = se_temp_file))
-
 se_data <- readxl::read_excel(se_temp_file)
-
-bev_raw <- read_csv('https://raw.githubusercontent.com/hovig/Team5-Data624-Project2/master/StudentData.csv') #%>%
-#drop_na(PH)
+bev_raw <- read_csv('https://raw.githubusercontent.com/hovig/Team5-Data624-Project2/master/StudentData.csv') 
+head(bev_raw)
 ```
 
 
-##Explore and Process Data
+#Data Preparation and EDA (Exploratory Data Analysis)
 
 
 ```{r}
@@ -68,7 +92,8 @@ bev_raw %>%
   theme(legend.position='center') +
   labs(y='Count', title='PH Levels in Dataset')
 
-bev_raw <- bev_raw %>% filter(!is.na(bev_raw$PH), bev_raw$PH < 9) 
+bev_raw <- bev_raw %>% 
+  filter(!is.na(bev_raw$PH), bev_raw$PH < 9) 
 ```
 
 ```{r}
@@ -81,7 +106,7 @@ describe(bev_raw %>% select(-`Brand Code`))
 ```
 
 
-###Zero variance
+##Zero variance
 
 ```{r}
 df1 <- bev_raw %>% select(-`Brand Code`) %>% mutate_each(funs(as.numeric(.)))%>%complete.cases()%>%
@@ -94,7 +119,7 @@ nzv[nzv$nzv,]
 ```
 
 
-###Box plot
+##Box plot
 
 ```{r}
 df.m <- melt(bev_raw %>% select(-MFR, -`Filler Speed`, -`Carb Flow`,-`Bowl Setpoint`,`Carb Pressure1`,
@@ -106,7 +131,7 @@ p <-ggplot(data = df.m, aes(x=variable, y=value)) +
 p
 ```
 
-###Normality 
+##Normality 
 
 ```{r}
 bev_raw%>%
@@ -125,7 +150,7 @@ bev_raw%>%
     geom_density() 
 ```
 
-##Prep Data
+#Data Preprocessing
 
 We perform 3 data preparation steps
 - Remove the near-zero variance variables we previously mentioned
@@ -156,7 +181,9 @@ form <- dummyVars(~ ., data = bev_imputed)
 bev_imputed <- predict(form, bev_imputed) %>% data.frame() %>% as.matrix()
 ```
 
-###Test Train Split
+#Model Building
+
+##Test Train Split
 
 We will split the data into train/test sets before running cross validation.  This will allow us to make sure that predictions are consistent at all levels of PH.
 
@@ -171,7 +198,7 @@ y_train <- y[samples]
 y_test <- y[-samples]
 ```
 
-##Build Models
+##Modeling Technique and Approach
 
 For state-of-the-art prediction quality, we will use a model stack.  This will consist of tuning models separately and then combining the candidate models into a metamodel that will formulate predictions with a linear combination of our tuned models.  
 
@@ -179,12 +206,6 @@ From the perspective of understanding the manufacturing process, the model stack
 
 
 ```{r}
-#xgb_grid <- expand.grid(eta = c(.01,.025), nrounds = c(750,1000), max_depth = c(5,6,7), gamma = c(.1,0), colsample_bytree = c(.8), min_child_weight = c(.4,.8), subsample = c(.8))
-#cub_grid <- expand.grid(.committees = c(1,3,5), .neighbors = c(1,3,5,7,9))
-#mars_grid <- expand.grid(.degree = c(1,2), .nprune = seq(16,36,4))
-#dart_grid <- expand.grid(eta = c(.025), nrounds = c(1000), gamma = c(.001,.1), skip_drop = c(.4,.8), rate_drop = c(.4,.8), #max_depth = c(6,7,8), colsample_bytree = c(.8), min_child_weight = c(.8), subsample = c(.8))
-#rf_grid <- expand.grid(mtry = c(5,10,15,20,25,30))
-
 xgb_grid <- expand.grid(eta = c(.01), nrounds = c(1000), max_depth = c(6), gamma = c(0), colsample_bytree = c(.8), min_child_weight = c(.8), subsample = c(.8))
 cub_grid <- expand.grid(.committees = c(5), .neighbors = c(7))
 mars_grid <- expand.grid(.degree = c(2), .nprune = 24)
@@ -216,7 +237,7 @@ mod_list <- caretList(
 
 *The training grid is commented out because of the time required to run, but can be uncommented for reproducibility of our model optimization*
 
-###MARS
+##MARS
 
 ```{r }
 #helper function
@@ -239,7 +260,7 @@ predict(mod_list$bagEarth, x_test) %>%
   postResample(y_test)
 ```
 
-###RandomForest
+##RandomForest
 
 ```{r}
 show_results(mod_list$rf)
@@ -252,7 +273,7 @@ predict(mod_list$rf, x_test) %>%
   postResample(y_test)
 ```
 
-###Cubist
+##Cubist
 
 ```{r}
 show_results(mod_list$cubist)
@@ -265,7 +286,7 @@ predict(mod_list$cubist, x_test) %>%
   postResample(y_test)
 ```
 
-###XGB Trees
+##XGB Trees
 
 ```{r}
   
@@ -279,7 +300,7 @@ predict(mod_list$xgbTree, x_test) %>%
   postResample(y_test)
 ```
 
-###XGB Dart
+##XGB Dart
 
 ```{r}
 show_results(mod_list$xgbDART)
@@ -296,7 +317,9 @@ predict(mod_list$xgbDART, x_test) %>%
 
 While the XGBTee model offers the lowest RMSE, it still only explains about 50% of the variance in PH.  There is plenty of room for the other models to offer value.  We will use the hyperparameters yielding the best RMSE in our final ensemble that will be built later.
 
-###Variable Importances
+#Model Evaluation And Model Selection
+
+##Variable Importances
 
 ```{r, fig.height = 8, fig.width=12}
 p1 <- varImp(mod_list$cubist) %>%
@@ -351,7 +374,7 @@ rp_mod <- rpart::rpart(ph ~ ., data = data.frame(bev_train, ph = y), method = 'a
 rpart.plot(rp_mod, uniform=TRUE)
 ```
 
-####Test Model Stack
+##Test Model Stack
 
 Now that our models are optimized and understood, we will form the ensemble and test the results.  We first look at their prediction correlations to confirm that the stack, intuitively, be effective.  The lower the correlation between the models, the more effective the stack will be.  
 
@@ -393,7 +416,7 @@ preds_df <- data.frame(predicted = preds, actual = y_test)
 ggplot(preds_df) + geom_point(aes(x = predicted, y = actual)) + geom_smooth(aes(x = predicted, y = actual))
 ```
 
-##Build Models
+##Model Selection
 
 On the test set, the ensemble's predictions are consistent throughout the range of PH.  Consistent quality is, theoretically, a feature of ensemble models because the models are weighted such that predictions are maximized.  If one model predicts better at lower PH, it will be upweighted over that range.  There are several outliers, but when not all of the variance is explainable, this is unavoidable.
 
@@ -465,3 +488,18 @@ predictions <- predict(final_ensemble, bev_eval)
 predictions %>% tibble::enframe(name = NULL) %>% datatable()
 write.csv(predictions, file = "predictions.csv")
 ```
+
+#Conclusion
+After working on extracting the data from the given files, we processed data cleansing and handle the missing values along with the NAs. We trained and tested the data 75% to 25% respectively. 
+Our models were able to produce for us predicted values for pH which are also saved in predictions.csv file separately. 
+We notice that all the values predicted are greater than 7 and more specifically greater than 8. This scale translates into saying that the beverage made is alkaline.
+At the beginning of this study, we were not informed about the nature of the ABC Beverage company, meaning of what type of beverage manufacturer it was. But from our studies we can conclude that this company produces alkaline beverages like water, dairy, tea, fruit drinks, etc.
+
+#References
+
++ Github : https://github.com/hovig/Team5-Data624-Project2
++ RPUBS: https://rpubs.com/hovig613/493738 
++ Prediction Results: https://github.com/hovig/Team5-Data624-Project2/blob/master/predictions.csv
+
+
+
