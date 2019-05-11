@@ -56,10 +56,6 @@ bev_raw <- read_csv('https://raw.githubusercontent.com/hovig/Team5-Data624-Proje
 #drop_na(PH)
 ```
 
-```{r}
-hist.data.frame(se_data)
-```
-
 
 ##Explore and Process Data
 
