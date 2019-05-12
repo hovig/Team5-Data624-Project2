@@ -220,6 +220,7 @@ For state-of-the-art prediction quality, we will use a model stack.  This will c
 
 From the perspective of understanding the manufacturing process, the model stack will also provide benefits.  The stack is like a panel of experts, each looking at the data through slightly different lenses to form their diagnoses.  By looking at the predictors each model uses, we can gather assemble a complete picture of the factors that affect our manufacturing process.  
 
+Four of the five models will be tree-based ensembles because this model type can handle non-linear relationships, is robust to outliers and skewed distributions, and can model complex interactions.  One non-tree modle is included for divsersity in the stack.
 
 ```{r}
 xgb_grid <- expand.grid(eta = c(.01), nrounds = c(1000), max_depth = c(6), gamma = c(0), colsample_bytree = c(.8), min_child_weight = c(.8), subsample = c(.8))
